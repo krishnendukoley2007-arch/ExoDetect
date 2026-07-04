@@ -1,6 +1,7 @@
 # 🪐 ExoDetect v10 — AI Exoplanet Detection from NASA TESS Light Curves
 
 **Bharatiya Antariksh Hackathon 2026 — Problem Statement 7 · Team OrbitX2026 · Jadavpur University**
+https://exodetect-wwahs5zzrdsayuhbzfxtfs.streamlit.app/ just click and open our project
 
 ExoDetect downloads real NASA TESS photometry for any star, hunts for transits
 with a Box Least Squares period search, extracts 20 physics-informed features,
