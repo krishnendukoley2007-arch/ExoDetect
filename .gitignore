@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Checkpoints & backups (not needed to run the app)
+features_dataset_partial.csv
+features_dataset_kepler_partial.csv
+exoplanet_classifier_v9_backup.pkl
+exoplanet_classifier_prev.pkl
+stellar_params_backup641.csv
+training_targets_v9_backup.csv
+toi_raw.csv
+model_validation_v9.png
+
+# Local-only
+.streamlit/secrets.toml

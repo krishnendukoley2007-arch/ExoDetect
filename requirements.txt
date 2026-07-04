@@ -1,0 +1,12 @@
+streamlit
+lightkurve
+scikit-learn
+xgboost
+astropy
+pandas
+numpy
+matplotlib
+scipy
+fpdf2
+plotly
+joblib
