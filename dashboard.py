@@ -882,38 +882,152 @@ def generate_ai_insight(r):
 # PDF GENERATOR
 # ════════════════════════════════════════════════════════════
 def generate_pdf(result):
+    """Vetting Report v2 — TFOP-memo-style per-star PDF.
+
+    Page 1: verdict banner, calibrated probability, vetting checklist,
+            cross-match, ephemeris, stellar host parameters, AI insight.
+    Page 2: SHAP explanation (why the model decided this).
+    Page 3: light curve / periodogram / phase fold.
+    """
+    import textwrap
+    r = result
     buf = io.BytesIO()
+    xm = None
+    try:
+        xm = db.lookup_toi(r["tic_id"])
+    except Exception:
+        pass
+
     with PdfPages(buf) as pdf:
+        # ── PAGE 1 — vetting memo ──────────────────────────────
         fig = plt.figure(figsize=(8.5, 11), facecolor='white')
-        ax0 = fig.add_axes([0, 0, 1, 1])
-        ax0.axis('off')
-        ax0.set_facecolor('white')
-        fig.text(0.5, 0.96, "ExoDetect — Analysis Report",
-                 ha='center', fontsize=18, fontweight='bold', color='#1a2a4a')
-        fig.text(0.5, 0.93, f"TIC {result['tic_id']} | BAH2026 PS7 | Jadavpur University",
-                 ha='center', fontsize=10, color='#4a6a9a')
-        lines = [
-            f"Generated : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            f"Model     : {model_source}", "",
-            f"Period    : {result['period_days']:.4f} days",
-            f"Duration  : {result['duration_hours']:.2f} hours",
-            f"Depth     : {result['depth']*100:.5f}%",
-            f"Radius    : {result['R_planet_earth']:.2f} Earth radii",
-            f"SNR       : {result['snr']:.2f}",
-            f"BLS Power : {float(result['best_power']):.1f}",
-            f"Sectors   : {result['n_sectors']} / {result['n_available']}", "",
-            f"ML Verdict: {result['ml_class']} ({result['ml_confidence']:.1f}%)",
-            f"Rule check: {result['rule_verdict']}", "",
-            "── AI INSIGHT ──",
+        ax0 = fig.add_axes([0, 0, 1, 1]); ax0.axis('off')
+        fig.text(0.5, 0.965, "ExoDetect — Candidate Vetting Report",
+                 ha='center', fontsize=17, fontweight='bold', color='#1a2a4a')
+        fig.text(0.5, 0.942, f"TIC {r['tic_id']}  |  Team OrbitX2026  |  "
+                 "BAH2026 PS7  |  Jadavpur University",
+                 ha='center', fontsize=9, color='#4a6a9a')
+
+        # Verdict banner
+        is_planet = r['ml_class'] == "Exoplanet Candidate"
+        vc = '#1a7a2a' if is_planet else ('#9a1010' if 'Binary' in r['ml_class']
+                                          or 'False' in r['ml_class'] else '#555577')
+        ax0.add_patch(plt.Rectangle((0.06, 0.875), 0.88, 0.045,
+                                    facecolor=vc, alpha=0.12, edgecolor=vc,
+                                    linewidth=1.5, transform=fig.transFigure))
+        fig.text(0.5, 0.897, f"VERDICT: {r['ml_class'].upper()}   —   "
+                 f"calibrated planet probability {r.get('planet_proba', 0)*100:.1f}%  "
+                 f"(threshold {r.get('decision_threshold', 0.5):.2f})",
+                 ha='center', fontsize=11, fontweight='bold', color=vc)
+
+        # Signal parameters (left column)
+        sig = [
+            "SIGNAL PARAMETERS",
+            "-" * 34,
+            f"Orbital period    {r['period_days']:>12.4f} d",
+            f"Transit duration  {r['duration_hours']:>12.2f} h",
+            f"Transit depth     {r['depth']*100:>12.5f} %",
+            f"Planet radius     {r['R_planet_earth']:>12.2f} R_Earth",
+            f"Detection SNR     {r['snr']:>12.2f}",
+            f"BLS power         {float(r['best_power']):>12.1f}",
+            f"Sectors stacked   {r['n_sectors']:>7} / {r['n_available']}",
         ]
-        insight = generate_ai_insight(result)
-        # word-wrap insight at 80 chars for PDF
-        import textwrap
-        wrapped = textwrap.fill(insight.replace("**",""), width=75)
-        lines.append(wrapped)
-        fig.text(0.08, 0.90, "\n".join(lines), fontsize=9, va='top',
+        fig.text(0.08, 0.855, "\n".join(sig), fontsize=8.5, va='top',
                  family='monospace', color='#1a2a4a')
+
+        # Stellar host (right column)
+        stel = [
+            "HOST STAR (TIC catalog)",
+            "-" * 34,
+            f"Eff. temperature  {r.get('stellar_Teff', 0):>10.0f} K",
+            f"Radius            {r.get('stellar_rad', 0):>10.2f} R_Sun",
+            f"Mass              {r.get('stellar_mass', 0):>10.2f} M_Sun",
+            f"log g             {r.get('stellar_logg', 0):>10.2f}",
+            f"TESS magnitude    {r.get('stellar_Tmag', 0):>10.2f}",
+        ]
+        fig.text(0.54, 0.855, "\n".join(stel), fontsize=8.5, va='top',
+                 family='monospace', color='#1a2a4a')
+
+        # Vetting checklist — the classic false-positive tests
+        sec_ok   = abs(r.get('sec_ratio', 0)) < 0.4
+        oe_ok    = r.get('odd_even_ratio', 0) < 0.3
+        shape_ok = r.get('transit_shape', 1.0) > 0.8
+        asym_ok  = r.get('ingress_egress_asymmetry', 0) < 1.0
+        cons_ok  = r.get('depth_consistency', 0) < 1.0
+        def mark(ok): return "[PASS]" if ok else "[FLAG]"
+        checks = [
+            "VETTING CHECKLIST",
+            "-" * 76,
+            f"{mark(sec_ok)}  Secondary eclipse   ratio {abs(r.get('sec_ratio',0)):.3f}"
+            f"  (eclipsing binaries show a 2nd dip at phase 0.5)",
+            f"{mark(oe_ok)}  Odd vs even depth   ratio {r.get('odd_even_ratio',0):.3f}"
+            f"  (unequal alternating depths reveal a binary at 2x period)",
+            f"{mark(shape_ok)}  Transit shape       U/V  {r.get('transit_shape',1.0):.3f}"
+            f"  (planets are flat-bottomed U; grazing binaries are V)",
+            f"{mark(asym_ok)}  Ingress/egress sym  asym {r.get('ingress_egress_asymmetry',0):.3f}"
+            f"  (real transits are left-right symmetric)",
+            f"{mark(cons_ok)}  Depth consistency   scat {r.get('depth_consistency',0):.3f}"
+            f"  (same depth every orbit; variable depth = artifact)",
+        ]
+        fig.text(0.08, 0.665, "\n".join(checks), fontsize=8, va='top',
+                 family='monospace', color='#1a2a4a')
+
+        # Cross-match + ephemeris
+        info = ["CATALOG CROSS-MATCH & EPHEMERIS", "-" * 76]
+        if xm:
+            info.append(f"TOI {xm['toi']}  —  TFOPWG disposition: {xm['disposition']}"
+                        + ("  (confirmed planet)" if xm['known_planet'] else
+                           "  (known false positive)" if xm['known_fp'] else
+                           "  (UNCONFIRMED candidate - this verdict is novel)"))
+            if xm.get('catalog_period'):
+                agree = abs(r['period_days'] - xm['catalog_period']) / xm['catalog_period'] < 0.03
+                info.append(f"Catalog period {xm['catalog_period']:.4f} d vs detected "
+                            f"{r['period_days']:.4f} d  -> "
+                            + ("MATCH" if agree else "MISMATCH (check harmonics)"))
+        else:
+            info.append("Not in the TOI catalog - a real signal here would be a new detection.")
+        try:
+            from astropy.time import Time as _Time
+            _jd0 = float(r["t0"]) + 2457000.0
+            _P = float(r["period_days"])
+            _n = int(np.ceil((_Time.now().jd - _jd0) / _P))
+            nxt = [_Time(_jd0 + (_n + k) * _P, format="jd").iso[:16] for k in range(3)]
+            info.append(f"Next transits (UTC): {nxt[0]}   |   {nxt[1]}   |   {nxt[2]}")
+        except Exception:
+            pass
+        fig.text(0.08, 0.535, "\n".join(info), fontsize=8, va='top',
+                 family='monospace', color='#1a2a4a')
+
+        # AI insight
+        insight = generate_ai_insight(r).replace("**", "")
+        wrapped = textwrap.fill(insight, width=92)
+        fig.text(0.08, 0.44, "AUTOMATED INTERPRETATION\n" + "-" * 76 + "\n" + wrapped,
+                 fontsize=8, va='top', family='monospace', color='#1a2a4a')
+
+        fig.text(0.5, 0.045,
+                 f"Generated {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} UTC-local  |  "
+                 f"Model: calibrated XGBoost v10.1 (holdout acc 78.6%, AUC 0.877)  |  "
+                 "github.com/krishnendukoley2007-arch/ExoDetect",
+                 ha='center', fontsize=7, color='#7a8aa8')
         pdf.savefig(fig, facecolor='white'); plt.close(fig)
+
+        # ── PAGE 2 — SHAP explanation ─────────────────────────
+        if r.get("shap"):
+            shap_d = dict(sorted(r["shap"].items(), key=lambda kv: abs(kv[1])))
+            names = list(shap_d.keys()); vals = list(shap_d.values())
+            figs, axs = plt.subplots(figsize=(8.5, 11), facecolor='white')
+            colors = ['#1a7a2a' if v > 0 else '#9a1010' for v in vals]
+            axs.barh(names, vals, color=colors)
+            axs.axvline(0, color='#888', linewidth=0.8)
+            axs.set_title(f"Why the model decided — SHAP contributions for TIC {r['tic_id']}\n"
+                          "green pushes toward PLANET, red pushes toward FALSE POSITIVE",
+                          fontsize=11, color='#1a2a4a')
+            axs.set_xlabel("Contribution to planet log-odds")
+            axs.tick_params(labelsize=8)
+            for sp in axs.spines.values():
+                sp.set_color('#cccccc')
+            figs.tight_layout()
+            pdf.savefig(figs, facecolor='white'); plt.close(figs)
 
         fig2, axes = plt.subplots(3, 1, figsize=(8.5, 11),
                                    facecolor='#0a1220', constrained_layout=True)
