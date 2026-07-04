@@ -45,7 +45,7 @@ No experience needed — follow these steps exactly.
 2. Unzip it somewhere easy, e.g. your Desktop. You'll get a folder called
    `ExoDetect-main`.
 
-**Option B — with git (if you have it):**
+**Option B — with git (if you have it/https://git-scm.com/install/windows download):**
 ```bash
 git clone https://github.com/krishnendukoley2007-arch/ExoDetect.git
 ```
