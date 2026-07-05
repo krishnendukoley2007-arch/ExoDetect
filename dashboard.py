@@ -421,9 +421,12 @@ def load_dataset_pool():
         return pd.DataFrame()
     fname = "features_dataset_clean.csv" if os.path.exists("features_dataset_clean.csv") else "features_dataset.csv"
     df = pd.read_csv(fname)
+    # Live analysis is TESS-only — Kepler (KIC) stars have no TESS pipeline,
+    # so keep them out of the star pickers.
+    df = df[~df["tic_id"].astype(str).str.startswith("KIC")]
     df["display_name"] = df.apply(
         lambda r: (
-            f"TIC {r['tic_id']}  |  "
+            f"{db.star_label(r['tic_id'])}  |  "
             f"{'🪐 Planet' if r['label']=='planet' else '⭐ False Positive'}  |  "
             f"SNR {r['snr']:.1f}  |  "
             f"depth {r['depth']*100:.3f}%"
@@ -2463,8 +2466,8 @@ elif page == "📄 Project Report":
     <li><b>Data Acquisition</b> — Multi-sector TESS download via lightkurve / NASA MAST with retry logic</li>
     <li><b>De-trending</b> — Savitzky-Golay flattening (window 401) removes instrumental systematics</li>
     <li><b>BLS Period Search</b> — Bounded Box Least Squares (≤2000 periods, frequency_factor=1) prevents grid overflow</li>
-    <li><b>Phase Folding + Feature Extraction</b> — 6 features: depth, SNR, secondary-eclipse ratio, transit duration, BLS power, odd-even depth difference</li>
-    <li><b>ML Classification — RF+GB Ensemble trained on 641 real NASA TOI labeled stars (planet / false positive), achieving 87.35% 5-fold CV accuracy</li>
+    <li><b>Phase Folding + Feature Extraction</b> — 21 physics-informed features: 11 light-curve (depth, SNR, secondary-eclipse ratio, transit shape, odd-even, asymmetry…), 3 engineered (planet radius estimate, expected-duration ratio, period) + 6 stellar + mission flag</li>
+    <li><b>ML Classification</b> — isotonic-calibrated XGBoost trained on 3,751 labeled NASA stars (TESS TOI + Kepler KOI), honest star-level holdout metrics</li>
     <li><b>AI Interpretation</b> — Natural language summary of signal quality, classification reasoning, and cross-check</li>
     </ol>
     </div>
@@ -2477,7 +2480,16 @@ elif page == "📄 Project Report":
             _lc  = dataset_pool['label'].value_counts()
             _ldf = pd.DataFrame({"Label": _lc.index.astype(str), "Count": _lc.values})
             st.dataframe(_ldf, use_container_width=True)
-            st.caption(f"Total: {len(dataset_pool)} stars | XGBoost v9 | 17 features | 97.60% accuracy")
+            try:
+                with open("model_metrics.json") as _rf:
+                    _rm = json.load(_rf)
+                st.caption(f"Live-analysis pool: {len(dataset_pool)} TESS stars | "
+                           f"training set: {_rm.get('n_total','?')} stars (TESS+Kepler) | "
+                           f"XGBoost {_rm.get('version','')} | {len(FEATURE_COLS)} features | "
+                           f"{_rm.get('holdout_accuracy','?')}% holdout accuracy")
+            except Exception:
+                st.caption(f"Live-analysis pool: {len(dataset_pool)} TESS stars | "
+                           f"{len(FEATURE_COLS)} features")
         else:
             st.info("Run extract_features.py to populate dataset.")
         st.markdown("</div>", unsafe_allow_html=True)

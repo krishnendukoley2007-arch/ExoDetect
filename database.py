@@ -227,8 +227,15 @@ def load_catalog():
     df["size_pw"]      = df["bls_power"].clip(lower=0).fillna(0) + 1
 
     # Merge stellar parameters where available (Teff, radius, mass, …)
+    # tic_id must be str on both sides: the catalog mixes TIC (numeric) and
+    # KIC-prefixed Kepler ids since v10.2, while stellar_params.csv is numeric.
     if os.path.exists("stellar_params.csv"):
+        df["tic_id"] = df["tic_id"].astype(str)
         sp = pd.read_csv("stellar_params.csv")
+        if os.path.exists("stellar_params_kepler.csv"):
+            sp = pd.concat([sp, pd.read_csv("stellar_params_kepler.csv")],
+                           ignore_index=True)
+        sp["tic_id"] = sp["tic_id"].astype(str)
         keep = [c for c in ["tic_id", "Teff", "rad", "mass", "logg", "Tmag", "lum"]
                 if c in sp.columns]
         df = df.merge(sp[keep], on="tic_id", how="left", suffixes=("", "_sp"))
@@ -239,6 +246,12 @@ def available_features(df):
     """Feature columns actually present in the loaded catalog."""
     return {c: n for c, n in {**FEATURE_LABELS, **STELLAR_LABELS}.items()
             if c in df.columns}
+
+
+def star_label(t):
+    """Display label for a star id — 'KIC…' shown as-is, else 'TIC <id>'."""
+    t = str(t)
+    return t if t.startswith("KIC") else f"TIC {t}"
 
 
 # ════════════════════════════════════════════════════════════
@@ -265,7 +278,7 @@ def fig_snr_depth(df):
         df, x="snr", y="depth_pct", color="Type", color_discrete_map=COLOR_MAP,
         size="size_pw", size_max=26, opacity=0.75,
         log_x=True, log_y=True,
-        hover_name=df["tic_id"].apply(lambda t: f"TIC {t}"),
+        hover_name=df["tic_id"].apply(star_label),
         hover_data={"snr": ":.1f", "depth_pct": ":.4f",
                     "period_days": ":.3f", "bls_power": ":.0f",
                     "size_pw": False, "Type": False},
@@ -281,7 +294,7 @@ def fig_period_radius(df):
         df, x="period_days", y="radius_earth", color="Type",
         color_discrete_map=COLOR_MAP,
         log_x=True, log_y=True, opacity=0.8,
-        hover_name=df["tic_id"].apply(lambda t: f"TIC {t}"),
+        hover_name=df["tic_id"].apply(star_label),
         hover_data={"period_days": ":.3f", "radius_earth": ":.2f",
                     "snr": ":.1f", "Type": False},
         labels={"period_days": "Orbital Period (days, log)",
@@ -315,7 +328,7 @@ def fig_animated_discovery(df):
         anim, x="period_days", y="depth_pct", color="Type",
         color_discrete_map=COLOR_MAP,
         animation_frame="frame", log_x=True, log_y=True,
-        hover_name=anim["tic_id"].apply(lambda t: f"TIC {t}"),
+        hover_name=anim["tic_id"].apply(star_label),
         range_x=[max(d["period_days"].min() * 0.7, 1e-3),
                  d["period_days"].max() * 1.4],
         range_y=[max(d["depth_pct"].min() * 0.7, 1e-5),
@@ -347,7 +360,7 @@ def _scatter3d(df, x, y, z, xlab, ylab, zlab, title, logs=(True, True, True)):
         fig.add_trace(go.Scatter3d(
             x=tf(sub[x], logs[0]), y=tf(sub[y], logs[1]), z=tf(sub[z], logs[2]),
             mode="markers", name=LABEL_NAMES[label],
-            text=[f"TIC {t}" for t in sub["tic_id"]],
+            text=[star_label(t) for t in sub["tic_id"]],
             hovertemplate="%{text}<extra></extra>",
             marker=dict(size=4, color=color, opacity=0.75,
                         line=dict(width=0.5, color=GRID_C)),
@@ -392,7 +405,7 @@ def fig_hr_diagram(df):
     fig = px.scatter(
         d, x="Teff", y="rad", color="Type", color_discrete_map=COLOR_MAP,
         log_y=True, opacity=0.85,
-        hover_name=d["tic_id"].apply(lambda t: f"TIC {t}"),
+        hover_name=d["tic_id"].apply(star_label),
         hover_data={"Teff": ":.0f", "rad": ":.2f",
                     "mass": ":.2f" if "mass" in d.columns else False, "Type": False},
         labels={"Teff": "Effective Temperature (K)", "rad": "Stellar Radius (R☉, log)"},
@@ -548,7 +561,7 @@ def fig_analyses_timeline(df):
         d, x="analyzed_at", y="snr", color="ml_class",
         color_discrete_map=color_map,
         size=d["ml_confidence"].clip(lower=1), size_max=22,
-        hover_name=d["tic_id"].apply(lambda t: f"TIC {t}"),
+        hover_name=d["tic_id"].apply(star_label),
         hover_data={"ml_confidence": ":.1f", "period_days": ":.3f", "ml_class": False},
         labels={"analyzed_at": "Analyzed at", "snr": "SNR", "ml_class": "Verdict"},
     )
@@ -687,7 +700,7 @@ def fig_stellar_3d(df):
         fig.add_trace(go.Scatter3d(
             x=sub["Teff"], y=sub["logg"], z=np.log10(sub["rad"].clip(lower=1e-3)),
             mode="markers", name=LABEL_NAMES[label],
-            text=[f"TIC {t}" for t in sub["tic_id"]],
+            text=[star_label(t) for t in sub["tic_id"]],
             hovertemplate="%{text}<br>Teff %{x:.0f} K | log g %{y:.2f}<extra></extra>",
             marker=dict(size=5, color=color, opacity=0.8,
                         line=dict(width=0.5, color=GRID_C)),
@@ -893,7 +906,7 @@ def fig_sky_map(df):
     fig = px.scatter(
         df, x="ra", y="dec", color="Group", color_discrete_map=SKY_COLORS,
         opacity=0.65,
-        hover_name=df["tid"].apply(lambda t: f"TIC {t}"),
+        hover_name=df["tid"].apply(star_label),
         hover_data={"toi": True, "ra": ":.2f", "dec": ":.2f",
                     "st_tmag": ":.1f", "Group": False},
         labels={"ra": "Right Ascension (deg)", "dec": "Declination (deg)"},
