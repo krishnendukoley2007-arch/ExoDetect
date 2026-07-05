@@ -21,6 +21,10 @@ BLS_FEATURES = ["depth", "snr", "sec_ratio", "duration_hours", "bls_power",
 #                           implausibly large => eclipsing binary
 #   duration_expected_ratio observed / expected transit duration for a
 #                           circular orbit around this star (classic vetting)
+# NOTE: a_over_rstar / teq_est / stellar_density / transit_prob are computed
+# by add_engineered_features (used for display/physics), but EXCLUDED from the
+# model: tested 2026-07-05, they dropped holdout acc 82.56→81.49 and AUC
+# 0.9089→0.9045 — redundant with period+stellar params, added noise.
 ENGINEERED_FEATURES = ["period_days", "planet_radius_est", "duration_expected_ratio"]
 
 STELLAR_FEATURES = ["Teff", "rad", "mass", "logg", "Tmag", "contratio"]
@@ -43,11 +47,20 @@ def add_mission_flag(df):
 
 
 def add_engineered_features(df):
-    """The v10.1 physics features. df needs depth, rad, mass, period_days,
-    duration_hours columns. Keep this THE only implementation."""
+    """The engineered physics features (v10.1 + v10.3). df needs depth, rad,
+    mass, Teff, period_days, duration_hours columns. Keep this THE only
+    implementation — the dashboard calls it too (on a one-row DataFrame)."""
     df["planet_radius_est"] = np.sqrt(df["depth"].clip(lower=0)) * df["rad"] * 109.076
     t_exp = 13.0 * (df["period_days"] / 365.25) ** (1 / 3) * df["rad"] / df["mass"] ** (1 / 3)
     df["duration_expected_ratio"] = df["duration_hours"] / t_exp.clip(lower=1e-6)
+
+    # v10.3 — Kepler's 3rd law: a[AU] = (P[yr]^2 * M[Msun])^(1/3); 1 AU = 215.03 Rsun
+    a_au = ((df["period_days"] / 365.25) ** 2 * df["mass"].clip(lower=1e-6)) ** (1 / 3)
+    a_rsun = a_au * 215.032
+    df["a_over_rstar"] = a_rsun / df["rad"].clip(lower=1e-6)
+    df["teq_est"] = df["Teff"] * np.sqrt(1.0 / (2.0 * df["a_over_rstar"].clip(lower=1e-6)))
+    df["stellar_density"] = df["mass"] / df["rad"].clip(lower=1e-6) ** 3
+    df["transit_prob"] = (1.0 / df["a_over_rstar"].clip(lower=1e-6)).clip(upper=1.0)
     return df
 
 

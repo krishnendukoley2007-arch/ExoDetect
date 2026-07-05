@@ -720,12 +720,9 @@ def run_pipeline(tic_id, max_sectors, period_min, period_max):
         Tmag_v     = sp.get("Tmag",     10.0)
         contratio_v= sp.get("contratio",0.0)
 
-        # ── v10.1 engineered features (must mirror train_model_v10.py) ──
-        planet_radius_est = np.sqrt(max(depth, 0)) * rad_v * 109.076
-        _t_exp = 13.0 * (period_days / 365.25) ** (1/3) * rad_v / max(mass_v, 1e-6) ** (1/3)
-        duration_expected_ratio = duration_hours / max(_t_exp, 1e-6)
-
-        # ── Build feature vector matching FEATURE_COLS exactly ──
+        # ── Engineered features via the SHARED implementation in
+        # features_config (one-row DataFrame) — cannot drift from training ──
+        from features_config import add_engineered_features, ENGINEERED_FEATURES
         feature_map = {
             "depth": abs(depth), "snr": max(snr, 0),
             "sec_ratio": abs(sec_ratio), "duration_hours": duration_hours,
@@ -735,12 +732,15 @@ def run_pipeline(tic_id, max_sectors, period_min, period_max):
             "ingress_egress_asymmetry": ingress_egress_asymmetry,
             "odd_even_ratio": odd_even_ratio,
             "period_days": period_days,
-            "planet_radius_est": planet_radius_est,
-            "duration_expected_ratio": duration_expected_ratio,
             "Teff": Teff_v, "rad": rad_v, "mass": mass_v,
             "logg": logg_v, "Tmag": Tmag_v, "contratio": contratio_v,
             "mission": 0.0,  # live analysis is always TESS (v10.2+ models)
         }
+        _eng = add_engineered_features(pd.DataFrame([feature_map])).iloc[0]
+        for _c in ENGINEERED_FEATURES:
+            feature_map[_c] = float(_eng[_c])
+        planet_radius_est = feature_map["planet_radius_est"]
+        duration_expected_ratio = feature_map["duration_expected_ratio"]
         fv_values = [feature_map.get(col, 0.0) for col in FEATURE_COLS]
         fv = np.array([fv_values])
 
@@ -2127,12 +2127,36 @@ elif page == "🏆 Frontier Leaderboard":
             "will appear here automatically."
         )
     else:
-        strong = int((fres["planet_proba"] >= 0.65).sum())
+        HC_T = 0.70  # high-confidence tier threshold
+        hc = fres[fres["planet_proba"] >= HC_T]
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Candidates surveyed", f"{len(fres)}" + (f" / {n_total}" if n_total else ""))
-        m2.metric("Likely planets (≥65%)", strong)
+        m2.metric(f"🥇 High-confidence (≥{HC_T*100:.0f}%)", len(hc))
         m3.metric("Best probability", f"{fres['planet_proba'].max()*100:.1f}%")
         m4.metric("Median probability", f"{fres['planet_proba'].median()*100:.1f}%")
+
+        # measured precision at this threshold on the honest holdout
+        _hc_prec = None
+        try:
+            _hp = cached_holdout()
+            _sel = _hp[_hp["planet_proba"] >= HC_T]
+            if len(_sel) >= 20:
+                _hc_prec = _sel["y_true"].mean() * 100
+        except Exception as e:
+            print(f"WARNING: holdout precision calc failed: {e}")
+        if not hc.empty:
+            prec_txt = (f"On the honest holdout, {_hc_prec:.0f}% of calls at this "
+                        f"confidence are real planets." if _hc_prec else "")
+            st.success(
+                f"🥇 **High-confidence tier** — {len(hc)} unconfirmed candidate(s) "
+                f"pass the ≥{HC_T*100:.0f}% probability bar. {prec_txt}"
+            )
+            _hcs = hc.sort_values("planet_proba", ascending=False).head(10)
+            st.markdown("  \n".join(
+                f"• **{db.star_label(r['tic_id'])}** (TOI {r['toi']}) — "
+                f"{r['planet_proba']*100:.1f}% | {r['radius_earth']:.1f} R⊕ | "
+                f"P {r['period_days']:.2f} d"
+                for _, r in _hcs.iterrows()))
         if n_total:
             st.progress(min(len(fres) / n_total, 1.0),
                         text=f"Frontier coverage: {len(fres)/n_total*100:.1f}% of "
@@ -2421,11 +2445,11 @@ elif page == "🎯 Model Honesty":
         <div class='report-card'>
         <h3>Why we report these numbers (and not 97%)</h3>
         <p>Earlier versions reported cross-validation accuracy, which can be inflated by
-        subtle leakage between folds. v10 locks away 334 stars before any training or
-        tuning, and applies <b>isotonic calibration</b> so the probability the app shows
-        is trustworthy: when it says "80% planet", roughly 80% of such calls are real
-        planets — verifiable in the reliability curve above. For telescope-time decisions,
-        a calibrated 76% is worth more than an uncalibrated 97%.</p>
+        subtle leakage between folds. v10+ locks away a 20% star-level holdout before
+        any training or tuning, and applies <b>isotonic calibration</b> so the probability
+        the app shows is trustworthy: when it says "80% planet", roughly 80% of such calls
+        are real planets — verifiable in the reliability curve above. For telescope-time
+        decisions, a calibrated 80% is worth more than an uncalibrated 97%.</p>
         </div>
         """, unsafe_allow_html=True)
         st.download_button("⬇️ Download held-out predictions (CSV)",

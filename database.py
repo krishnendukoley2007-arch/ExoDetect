@@ -971,17 +971,30 @@ def load_holdout():
 
 
 def fig_roc_curve(hold):
-    """ROC on the untouched held-out set, with threshold hover."""
+    """ROC on the untouched held-out set, with threshold hover.
+    Overlays per-mission (TESS vs Kepler) curves when both are present."""
     from sklearn.metrics import roc_curve, auc
     fpr, tpr, thr = roc_curve(hold["y_true"], hold["planet_proba"])
     a = auc(fpr, tpr)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=fpr, y=tpr, mode="lines", line=dict(color=ACCENT, width=3),
-        name=f"ExoDetect v10 (AUC {a:.3f})",
+        name=f"All missions (AUC {a:.3f})",
         customdata=thr, hovertemplate=("FPR %{x:.2f} | TPR %{y:.2f}<br>"
                                        "threshold %{customdata:.2f}<extra></extra>"),
     ))
+    is_kep = hold["tic_id"].astype(str).str.startswith("KIC")
+    if is_kep.any() and (~is_kep).any():
+        for mask, mname, col in [(~is_kep, "TESS", ORANGE), (is_kep, "Kepler", PURPLE)]:
+            sub = hold[mask]
+            if sub["y_true"].nunique() < 2:
+                continue
+            f_m, t_m, _ = roc_curve(sub["y_true"], sub["planet_proba"])
+            a_m = auc(f_m, t_m)
+            fig.add_trace(go.Scatter(
+                x=f_m, y=t_m, mode="lines",
+                line=dict(color=col, width=1.6, dash="dot"),
+                name=f"{mname} only, {len(sub)} stars (AUC {a_m:.3f})"))
     fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines",
                              line=dict(color=LABEL_C, dash="dash", width=1),
                              name="Random guess"))
