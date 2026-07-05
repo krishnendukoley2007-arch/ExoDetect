@@ -10,6 +10,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.ensemble import RandomForestClassifier
 import io
 import os
+import re
 import time
 import datetime
 import joblib
@@ -344,16 +345,12 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# v9: 17 features — loaded from feature_cols.pkl (saved by train_model.py)
+# Feature list — feature_cols.pkl (saved by train_model_v10.py) is canonical;
+# features_config.py is the shared fallback so the list can never go stale.
 try:
     FEATURE_COLS = joblib.load("feature_cols.pkl")
 except Exception:
-    FEATURE_COLS = [
-        "depth", "snr", "sec_ratio", "duration_hours", "bls_power", "odd_even_diff",
-        "transit_shape", "dur_period_ratio", "depth_consistency",
-        "ingress_egress_asymmetry", "odd_even_ratio",
-        "Teff", "rad", "mass", "logg", "Tmag", "contratio",
-    ]
+    from features_config import FEATURE_COLS
 
 # Stellar params — loaded once, used for live feature enrichment
 @st.cache_data
@@ -437,6 +434,26 @@ def load_dataset_pool():
 dataset_pool = load_dataset_pool()
 
 
+# Cached wrappers for CSV-backed db loaders (files change rarely; 5-min TTL).
+# SQLite-backed loaders (db_stats, fetch_analyses, load_frontier_results) stay
+# uncached on purpose — they must reflect writes made during the session.
+@st.cache_data(ttl=300)
+def cached_catalog():
+    return db.load_catalog()
+
+@st.cache_data(ttl=300)
+def cached_frontier(n=None):
+    return db.load_frontier(n)
+
+@st.cache_data(ttl=300)
+def cached_sky_targets():
+    return db.load_sky_targets()
+
+@st.cache_data(ttl=300)
+def cached_holdout():
+    return db.load_holdout()
+
+
 # ════════════════════════════════════════════════════════════
 # CLASSIFIER
 # ════════════════════════════════════════════════════════════
@@ -448,30 +465,25 @@ def load_classifier():
         n   = str(len(dataset_pool)) if not dataset_pool.empty else "?"
         if os.path.exists("model_metrics.json"):
             import json as _json
-            with open("model_metrics.json") as _f:
-                m = _json.load(_f)
-            desc = (f"XGBoost {m.get('version','v10')} (calibrated) — {n} stars | 17 features | "
+            try:
+                with open("model_metrics.json") as _f:
+                    m = _json.load(_f)
+            except Exception as e:
+                print(f"WARNING: model_metrics.json unreadable: {e}")
+                m = {}
+            desc = (f"XGBoost {m.get('version','v10')} (calibrated) — {n} stars | "
+                    f"{len(FEATURE_COLS)} features | "
                     f"held-out accuracy {m.get('holdout_accuracy','?')}% | "
                     f"ROC-AUC {m.get('holdout_roc_auc','?')} | "
                     f"recall {m.get('holdout_recall','?')}%")
         else:
-            desc = f"XGBoost v9 — {n} stars | 17 features | 97.60% CV accuracy | ROC-AUC 0.9987"
+            desc = f"XGBoost (calibrated) — {n} stars | {len(FEATURE_COLS)} features"
         return clf, le, desc, True
-    # Fallback tiny RF so UI never crashes
-    from sklearn.ensemble import RandomForestClassifier as RFC
-    rng = np.random.default_rng(42)
-    seeds = [
-        ([0.000183,19.4,0.11,2.64,2837,0.00002,1.2,0.01,0.1,0.05,0.1,5778,1.0,1.0,4.4,10.0,0.0], "planet"),
-        ([0.01,15.0,0.80,4.0,1800,0.002,0.9,0.02,0.5,0.08,0.5,5200,0.9,0.9,4.5,10.5,0.05], "false_positive"),
-    ]
-    X, y = [], []
-    for vals, lab in seeds:
-        for _ in range(20):
-            X.append([abs(v*rng.normal(1,0.2)) for v in vals])
-            y.append(lab)
-    clf = RFC(n_estimators=50, random_state=42)
-    clf.fit(np.array(X), np.array(y))
-    return clf, None, "Synthetic fallback — place real model files in folder", False
+    # No model = hard stop. A synthetic fallback would fabricate confident
+    # predictions — worse than an honest error.
+    st.error("❌ Model file `exoplanet_classifier.pkl` not found — deployment is "
+             "incomplete. Run `python train_model_v10.py` to create it.")
+    st.stop()
 
 clf_model, label_encoder, model_source, is_real_model = load_classifier()
 
@@ -696,6 +708,8 @@ def run_pipeline(tic_id, max_sectors, period_min, period_max):
 
         # ── Stellar params lookup (v9) ──
         sp = get_stellar_features(tic_id)
+        result["stellar_params_found"] = (not stellar_db.empty and
+                                          str(tic_id) in stellar_db.index)
         Teff_v     = sp.get("Teff",     5778.0)
         rad_v      = sp.get("rad",      1.0)
         mass_v     = sp.get("mass",     1.0)
@@ -722,6 +736,7 @@ def run_pipeline(tic_id, max_sectors, period_min, period_max):
             "duration_expected_ratio": duration_expected_ratio,
             "Teff": Teff_v, "rad": rad_v, "mass": mass_v,
             "logg": logg_v, "Tmag": Tmag_v, "contratio": contratio_v,
+            "mission": 0.0,  # live analysis is always TESS (v10.2+ models)
         }
         fv_values = [feature_map.get(col, 0.0) for col in FEATURE_COLS]
         fv = np.array([fv_values])
@@ -813,8 +828,9 @@ def get_or_run(tic_id, max_sectors, period_min, period_max, force=False):
         # ── Persist to SQLite so results survive app restarts ──
         try:
             db.save_analysis(result, insight=generate_ai_insight(result))
-        except Exception:
-            pass  # DB write failure must never break the analysis flow
+        except Exception as e:
+            # DB write failure must never break the analysis flow — but log it
+            print(f"WARNING: DB save failed for TIC {key}: {e}")
     return result
 
 
@@ -1004,9 +1020,17 @@ def generate_pdf(result):
         fig.text(0.08, 0.44, "AUTOMATED INTERPRETATION\n" + "-" * 76 + "\n" + wrapped,
                  fontsize=8, va='top', family='monospace', color='#1a2a4a')
 
+        try:
+            with open("model_metrics.json") as _pf:
+                _pm = json.load(_pf)
+            _model_line = (f"Model: calibrated XGBoost {_pm.get('version','')} "
+                           f"(holdout acc {_pm.get('holdout_accuracy','?')}%, "
+                           f"AUC {_pm.get('holdout_roc_auc','?')})")
+        except Exception:
+            _model_line = "Model: calibrated XGBoost"
         fig.text(0.5, 0.045,
                  f"Generated {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} UTC-local  |  "
-                 f"Model: calibrated XGBoost v10.1 (holdout acc 78.6%, AUC 0.877)  |  "
+                 f"{_model_line}  |  "
                  "github.com/krishnendukoley2007-arch/ExoDetect",
                  ha='center', fontsize=7, color='#7a8aa8')
         pdf.savefig(fig, facecolor='white'); plt.close(fig)
@@ -1138,6 +1162,10 @@ def render_result(result):
         f"✅  TIC {r['tic_id']}  |  {r['n_sectors']}/{r['n_available']} sectors  |  "
         f"Period {period_d:.4f} d  |  BLS Power {best_power:.0f}"
     )
+    if not r.get("stellar_params_found", True):
+        st.warning("⚠️ No stellar parameters found for this TIC — using Sun-like "
+                   "defaults (Teff 5778 K, 1 R☉, 1 M☉). The planet-radius estimate "
+                   "and ML probability are less reliable for this star.")
 
     # ── Metrics row ──
     st.markdown("---")
@@ -1663,6 +1691,9 @@ if _pw:
 max_sectors = st.sidebar.slider("Sectors to stack", 1, 10, 5)
 period_min  = st.sidebar.slider("Min period (days)", 0.5, 5.0, key="period_min")
 period_max  = st.sidebar.slider("Max period (days)", 5.0, 30.0, key="period_max")
+if period_min >= period_max:  # both sliders can sit at 5.0 — BLS needs a window
+    st.sidebar.warning("Min period must be below max — widening the window.")
+    period_max = period_min + 0.5
 
 if not dataset_pool.empty:
     st.sidebar.markdown("---")
@@ -1674,8 +1705,8 @@ if not dataset_pool.empty:
 try:
     _n_saved = db.db_stats()["total"]
     st.sidebar.markdown(f"🗄️ Saved analyses: **{_n_saved}**")
-except Exception:
-    pass
+except Exception as e:
+    print(f"WARNING: db_stats failed: {e}")
 
 try:
     with open("model_metrics.json") as _mf:
@@ -1688,8 +1719,8 @@ try:
     _mc, _md = st.sidebar.columns(2)
     _mc.metric("ROC-AUC", f"{_mm['holdout_roc_auc']:.3f}")
     _md.metric("Test stars", f"{_mm['n_test']}")
-except Exception:
-    pass
+except Exception as e:
+    print(f"WARNING: model_metrics.json sidebar card failed: {e}")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**👥 Team Members**")
@@ -1996,6 +2027,8 @@ elif page == "🛰️ Batch Survey":
         up = st.file_uploader("…or upload a CSV with a tic_id column", type="csv")
         if up is not None:
             try:
+                if up.size > 10_000_000:
+                    raise ValueError("file too large (max 10 MB)")
                 _updf = pd.read_csv(up)
                 col = "tic_id" if "tic_id" in _updf.columns else _updf.columns[0]
                 batch_ids = _updf[col].astype(str).str.strip().tolist()
@@ -2003,7 +2036,7 @@ elif page == "🛰️ Batch Survey":
             except Exception as e:
                 st.error(f"Could not read CSV: {e}")
     with bs2:
-        frontier = db.load_frontier()
+        frontier = cached_frontier()
         if frontier.empty:
             st.info("frontier_targets.csv not found — run fetch_toi.py first.")
         else:
@@ -2081,7 +2114,7 @@ elif page == "🏆 Frontier Leaderboard":
     )
 
     fres = db.load_frontier_results()
-    frontier_all = db.load_frontier()
+    frontier_all = cached_frontier()
     n_total = len(frontier_all) if not frontier_all.empty else 0
 
     if fres.empty:
@@ -2151,7 +2184,7 @@ elif page == "🗄️ Database Explorer":
     """, unsafe_allow_html=True)
 
     stats   = db.db_stats()
-    catalog = db.load_catalog()
+    catalog = cached_catalog()
 
     # ── Animated stat cards ──
     st.markdown(f"""
@@ -2188,7 +2221,7 @@ elif page == "🗄️ Database Explorer":
             cat = catalog[catalog["Type"].isin(type_f)]
             cat = cat[(cat["snr"] >= snr_rng[0]) & (cat["snr"] <= snr_rng[1])]
             if search.strip():
-                cat = cat[cat["tic_id"].astype(str).str.contains(search.strip())]
+                cat = cat[cat["tic_id"].astype(str).str.contains(re.escape(search.strip()))]
 
     # ── TAB 1: core catalog analytics ──
     if not catalog.empty:
@@ -2328,7 +2361,7 @@ elif page == "🗄️ Database Explorer":
 # ════════════════════════════════════════════════════════════
 elif page == "🗺️ Sky Map":
     st.subheader("🗺️ Sky Map — the TOI population on the celestial sphere")
-    sky = db.load_sky_targets()
+    sky = cached_sky_targets()
     if sky.empty:
         st.info("toi_raw_full.csv not found — run fetch_toi.py first.")
     else:
@@ -2358,7 +2391,7 @@ elif page == "🎯 Model Honesty":
         "away before training. No cross-validation optimism, no leakage — this is how "
         "the model performs on stars it has genuinely never seen."
     )
-    hold = db.load_holdout()
+    hold = cached_holdout()
     if hold.empty:
         st.info("holdout_predictions.csv not found — run eval_holdout.py after training.")
     else:

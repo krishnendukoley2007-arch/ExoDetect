@@ -27,39 +27,31 @@ SHAP explanation → AI text insight.
 - Push flow: `git add -A && git commit && git pull --rebase origin main &&
   git push` (user sometimes edits README on github.com — always rebase first).
 
-## Current model — v10.1-tuned (all honest, star-level 20% holdout)
-- `exoplanet_classifier.pkl` = isotonic-calibrated XGBoost (Optuna-tuned:
-  n_est 550, depth 6, lr 0.0155, λ=3.0, mcw 6 — full params in
-  tuned_params.json); `xgb_raw.pkl` for SHAP; `feature_cols.pkl` = 20 cols.
-- **Holdout (360 never-seen stars): accuracy 78.61%, precision 76.97%,
-  recall 79.19%, F1 78.06%, ROC-AUC 0.8769, Brier 0.143** (model_metrics.json).
-  Journey today: 76.4% → 78.6%. The old "97.6%" was leakage — never resurrect.
-- v10.1 engineered features (IDENTICAL in train_model_v10.py, eval_holdout.py,
-  tune_model.py, and dashboard run_pipeline feature_map — keep in sync!):
-  `period_days`, `planet_radius_est` = sqrt(depth)·R★·109.076,
-  `duration_expected_ratio` = duration_hours / (13·(P/365.25)^⅓·R★/M★^⅓).
-- Data: features_dataset.csv 2,137 TESS stars (1,797 clean = 863 planet /
-  934 FP; features_dataset_clean.csv in sync); stellar_params.csv 2,137
-  (100% coverage); toi_raw_full.csv 8,035 TOIs; frontier_targets.csv 5,162
-  unconfirmed PC/APC.
-- Retrain chain: `python train_model_v10.py && python eval_holdout.py &&
-  python tune_model.py` (tune only replaces model if it beats holdout AUC;
-  backup → exoplanet_classifier_prev.pkl). After retrain also regenerate
-  features_dataset_clean.csv (same filters as train script) or UI counts stale.
-
-## IN PROGRESS — Kepler expansion (running in USER'S terminal)
-`extract_features_kepler.py` is downloading 4,427 labeled Kepler stars
-(1,927 planet / 2,500 FP from KOI cumulative, brightest-first, conflicting
-labels dropped). IDs stored as "KIC<kepid>" (never collides with TIC).
-- Checkpoint: features_dataset_kepler_partial.csv (Ctrl+C safe, rerun resumes).
-- Takes 1–3 days total; stopping early is fine (even ~1,500 stars is a big win).
-- `kepler_targets.csv` + `stellar_params_kepler.csv` (from KOI table) already
-  built by `build_kepler_targets.py`.
-- When done (or stopped): the retrain chain above AUTO-DETECTS and merges
-  features_dataset_kepler.csv + stellar_params_kepler.csv (all three training
-  scripts concat them if present). Then update README metrics table + git push.
-- Dashboard stays TESS-only for live analysis (correct — KIC stars have no
-  TESS pipeline); Kepler only feeds training.
+## Current model — v10.2 (cross-mission TESS+Kepler, honest 20% holdout)
+- `exoplanet_classifier.pkl` = isotonic-calibrated XGBoost, 21 features
+  (20 previous + `mission` flag 0=TESS/1=Kepler); `xgb_raw.pkl` for SHAP;
+  `feature_cols.pkl` = 21 cols. scale_pos_weight set from train split.
+- **Holdout (751 never-seen stars): accuracy 82.56%, precision 81.03%,
+  recall 84.72%, F1 82.83%, ROC-AUC 0.9089, Brier 0.124.**
+  Per mission: TESS 78.38% / AUC 0.8718 · Kepler 85.89% / AUC 0.9332.
+  Journey: 76.4% → 78.6% (v10.1) → 82.6% (v10.2 Kepler merge).
+  The old "97.6%" was leakage — never resurrect.
+- Threshold sweep (eval_holdout.py prints it): best F1 at default 0.50;
+  t=0.70 gives 91.9% precision — candidate for frontier vetting mode.
+- Feature lists/filters/engineered formulas live ONLY in features_config.py
+  (shared by train/eval/tune + dashboard fallback). Dashboard sends mission=0.
+- Data: features_dataset.csv 2,137 TESS + features_dataset_kepler.csv 2,620
+  Kepler (extraction finished 2026-07-05: 2,164 success of first pass + a
+  final retry pass; 4,427 targeted). Clean training set 3,751 stars
+  (1,861 planet / 1,890 FP); features_dataset_clean.csv in sync.
+  stellar_params.csv 2,137 + stellar_params_kepler.csv (96.5% coverage).
+  toi_raw_full.csv 8,035 TOIs; frontier_targets.csv 5,162 unconfirmed PC/APC.
+- Retrain chain unchanged: train_model_v10.py && eval_holdout.py &&
+  tune_model.py (tune only replaces model if it beats holdout AUC). After
+  retrain regenerate features_dataset_clean.csv (see refactor note below).
+- First post-merge tune (60 trials) did NOT beat the untuned v10.2 model —
+  best params kept in tuned_params.json for reference only.
+- Dashboard stays TESS-only for live analysis; Kepler only feeds training.
 
 ## Dashboard pages (9, all verified via streamlit.testing.v1 AppTest)
 Individual Analysis (6 tabs; tabs 1–3 now interactive Plotly Scattergl with
@@ -99,6 +91,26 @@ CSV/JSON export), 🗄️ Database Explorer, 🗺️ Sky Map, 🎯 Model Honesty
 - features_dataset_clean.csv preferred by load_catalog — regen after retrains.
 - exodetect.db committed to git = cloud seed; local runs modify it (dirty
   git status is normal).
+
+## Refactor 2026-07-04 (late) — pre-Kepler-merge hardening
+- **features_config.py is now the single source of truth**: feature lists,
+  physical filters, stellar merge, engineered features, and `load_clean()` —
+  imported by train_model_v10.py, eval_holdout.py, tune_model.py, and
+  dashboard.py (as FEATURE_COLS fallback). Never copy-paste lists again.
+- **New `mission` feature** (0=TESS, 1=KIC prefix) → next retrain is v10.2 with
+  21 features; absorbs Kepmag-in-Tmag + missing-contratio systematics.
+  Dashboard feature_map sends mission=0 (live analysis is TESS-only).
+- train + tune now set `scale_pos_weight`; train + eval print per-mission
+  holdout metrics; load_clean logs filter drops per mission.
+- eval_holdout.py prints a threshold sweep (verified: best F1 at t=0.30;
+  t=0.75 gives 91.7% precision — candidate for frontier leaderboard mode).
+- Dashboard: synthetic-RF fallback removed (missing model = st.error + stop),
+  stale 17-feature fallback list removed, CSV-backed db loaders cached
+  (5-min TTL; SQLite loaders deliberately uncached), silent excepts now
+  print warnings, period min>=max guard, 10 MB upload cap, regex-escaped
+  search, "Sun-like defaults" warning when stellar params missing.
+- Verified: eval_holdout reproduces exactly 78.61%/0.8769 (shared cleaning is
+  byte-identical); AppTest passes on all pages. NOT yet committed/pushed.
 
 ## Remaining backlog (priority order)
 1. **Finish Kepler** (user's terminal) → retrain → update README metrics → push.

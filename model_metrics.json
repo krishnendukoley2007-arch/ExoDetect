@@ -1,29 +1,18 @@
 {
-  "version": "v10.1-tuned",
-  "n_train": 1437,
-  "n_test": 360,
-  "n_total": 1797,
-  "stellar_coverage_pct": 100.0,
-  "cv_roc_auc_train": 0.8604,
-  "holdout_accuracy": 78.61,
-  "holdout_precision": 76.97,
-  "holdout_recall": 79.19,
-  "holdout_f1": 78.06,
-  "holdout_roc_auc": 0.8769,
-  "holdout_brier": 0.143,
+  "version": "v10.2",
+  "n_train": 3000,
+  "n_test": 751,
+  "n_total": 3751,
+  "stellar_coverage_pct": 96.5,
+  "cv_accuracy_train": 80.17,
+  "cv_std_train": 1.07,
+  "holdout_accuracy": 82.56,
+  "holdout_precision": 81.03,
+  "holdout_recall": 84.72,
+  "holdout_f1": 82.83,
+  "holdout_roc_auc": 0.9089,
+  "holdout_brier": 0.124,
   "calibration": "isotonic (5-fold)",
-  "tuning": "optuna TPE, 60 trials, CV ROC-AUC on train split",
-  "best_params": {
-    "n_estimators": 550,
-    "max_depth": 6,
-    "learning_rate": 0.015516628088037962,
-    "subsample": 0.8215396532235818,
-    "colsample_bytree": 0.6864352233551411,
-    "min_child_weight": 6,
-    "reg_lambda": 3.0449543752445765,
-    "reg_alpha": 0.003767167604670923,
-    "gamma": 0.01423242217487502
-  },
   "feature_cols": [
     "depth",
     "snr",
@@ -44,6 +33,11 @@
     "mass",
     "logg",
     "Tmag",
-    "contratio"
-  ]
+    "contratio",
+    "mission"
+  ],
+  "holdout_accuracy_tess": 78.38,
+  "holdout_roc_auc_tess": 0.8718,
+  "holdout_accuracy_kepler": 85.89,
+  "holdout_roc_auc_kepler": 0.9332
 }

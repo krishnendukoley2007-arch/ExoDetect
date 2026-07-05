@@ -1,24 +1,26 @@
-# 🪐 ExoDetect v10 — AI Exoplanet Detection from NASA TESS Light Curves
+# 🪐 ExoDetect v10.2 — AI Exoplanet Detection from NASA TESS Light Curves
 
 **Bharatiya Antariksh Hackathon 2026 — Problem Statement 7 · Team OrbitX2026 · Jadavpur University**
 https://exodetect-wwahs5zzrdsayuhbzfxtfs.streamlit.app/ just click and open our project(If it does not work then follow the steps below. )
 
 ExoDetect downloads real NASA TESS photometry for any star, hunts for transits
-with a Box Least Squares period search, extracts 20 physics-informed features,
+with a Box Least Squares period search, extracts 21 physics-informed features,
 and classifies the signal with an isotonic-calibrated XGBoost model — with
 honest, held-out metrics and per-prediction SHAP explanations.
 
-## Honest model performance (360 never-seen stars)
+## Honest model performance (751 never-seen stars)
 | Metric | Value |
 |---|---|
-| Accuracy | 78.6% |
-| Recall (planets caught) | 79.2% |
-| ROC-AUC | 0.877 |
-| Brier score (calibration) | 0.143 |
+| Accuracy | 82.6% |
+| Recall (planets caught) | 84.7% |
+| ROC-AUC | 0.909 |
+| Brier score (calibration) | 0.124 |
 
-Trained on 1,797 quality-filtered NASA TOI stars (Kepler expansion to ~6,000 in
-progress). No leakage: a 20% star-level holdout is locked away before any
-training or tuning.
+Per mission: TESS holdout 78.4% (AUC 0.872) · Kepler holdout 85.9% (AUC 0.933).
+
+Trained on 3,751 quality-filtered NASA stars — 1,797 TESS TOIs + 1,954 Kepler
+KOIs (cross-mission training with a mission flag). No leakage: a 20% star-level
+holdout is locked away before any training or tuning.
 
 ## 🖥️ How to run ExoDetect on your own computer
 
