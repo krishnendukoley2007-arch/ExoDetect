@@ -580,13 +580,16 @@ def compute_bls_periodogram(lc, period_min, period_max, max_retries=4):
         durations = np.linspace(0.02, 0.25, n_durations)
 
         try:
-            # frequency_factor=1 → lightkurve does NOT internally
-            # expand the grid; we own the resolution entirely.
+            # We pass an explicit `period` grid, so lightkurve's own grid is
+            # never used — BUT its size pre-check still computes npoints from
+            # frequency_factor and the baseline, and raises "too large" for
+            # long-baseline stars. frequency_factor is otherwise unused when
+            # `period` is given, so a huge value defuses the bogus check.
             pg = lc.to_periodogram(
                 method='bls',
                 period=periods,
                 duration=durations,
-                frequency_factor=1
+                frequency_factor=1e6
             )
             return pg, None
         except Exception as e:

@@ -112,6 +112,27 @@ CSV/JSON export), 🗄️ Database Explorer, 🗺️ Sky Map, 🎯 Model Honesty
 - Verified: eval_holdout reproduces exactly 78.61%/0.8769 (shared cleaning is
   byte-identical); AppTest passes on all pages. NOT yet committed/pushed.
 
+## Session 2026-07-05 (later) — UI upgrades + cloud DB seeded
+- **Feature experiment (honest negative result)**: a_over_rstar / teq_est /
+  stellar_density / transit_prob dropped holdout 82.56→81.49, AUC
+  0.9089→0.9045 → reverted to the 21-feature v10.2 model (git restore of
+  artifacts). Formulas remain in features_config.add_engineered_features
+  (display use) but are EXCLUDED from ENGINEERED_FEATURES — see note there.
+- Dashboard run_pipeline now computes engineered features via
+  features_config.add_engineered_features on a one-row DataFrame — training
+  and live formulas physically cannot drift.
+- **Frontier Leaderboard: 🥇 high-confidence tier** (proba ≥ 0.70) with
+  measured holdout precision quoted live from holdout_predictions.csv.
+- **Model Honesty: per-mission ROC overlay** (TESS vs Kepler dotted curves)
+  in db.fig_roc_curve when the holdout has both missions.
+- **BLS "too large" bug FIXED**: lightkurve's size pre-check uses
+  frequency_factor even when an explicit period grid is passed; we now pass
+  frequency_factor=1e6 (unused for the real search) — long-baseline stars
+  (e.g. TIC 428673146) analyze fine now.
+- **Cloud DB seeded** via new seed_db.py (bare-mode import of dashboard,
+  catalog-tuned 0.7–1.4× period windows): 78 analyses, 16 frontier verdicts
+  in committed exodetect.db.
+
 ## Remaining backlog (priority order)
 1. **Finish Kepler** (user's terminal) → retrain → update README metrics → push.
 2. **Seed cloud DB**: run 10–15 best stars locally, commit exodetect.db, push
