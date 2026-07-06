@@ -1,0 +1,28 @@
+EXACT NUMBERS FOR SLIDES — model v10.2, generated from live files
+================================================================
+
+Training stars: 3000  |  Holdout (never seen): 751  |  Total: 3751
+Holdout accuracy : 82.56%
+Holdout precision: 81.03%
+Holdout recall   : 84.72%
+Holdout F1       : 82.83%
+ROC-AUC          : 0.9089
+Brier (calibration): 0.124
+TESS-only accuracy  : 78.38
+TESS-only AUC       : 0.8718
+Kepler-only accuracy: 85.89
+Kepler-only AUC     : 0.9332
+
+Vetting mode (threshold 0.70): precision 91.9% on holdout
+Features: 21 (11 light-curve + 3 engineered + 6 stellar + mission)
+Calibration: isotonic (5-fold)
+
+Classification report (holdout, threshold 0.5):
+                precision    recall  f1-score   support
+
+false_positive     0.8421    0.8042    0.8227       378
+        planet     0.8103    0.8472    0.8283       373
+
+      accuracy                         0.8256       751
+     macro avg     0.8262    0.8257    0.8255       751
+  weighted avg     0.8263    0.8256    0.8255       751

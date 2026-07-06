@@ -1703,7 +1703,14 @@ if period_min >= period_max:  # both sliders can sit at 5.0 — BLS needs a wind
 
 if not dataset_pool.empty:
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**📊 Dataset:** {len(dataset_pool)} quality NASA stars (clean)")
+    try:
+        with open("model_metrics.json") as _df_:
+            _n_train_total = json.load(_df_).get("n_total")
+    except Exception:
+        _n_train_total = None
+    _tot_txt = f" · trained on {_n_train_total} (TESS+Kepler)" if _n_train_total else ""
+    st.sidebar.markdown(f"**📊 Dataset:** {len(dataset_pool)} TESS stars for live "
+                        f"analysis{_tot_txt}")
     n_planet = (dataset_pool['label']=='planet').sum()
     n_fp     = (dataset_pool['label']=='false_positive').sum()
     st.sidebar.markdown(f"🪐 Planets: **{n_planet}** &nbsp; ⭐ False Pos: **{n_fp}**")
@@ -1750,7 +1757,12 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown("**Team Name:** OrbitX2026")
 st.sidebar.markdown("---")
-st.sidebar.caption("ExoDetect v10 | BAH2026 PS7 | planet/ build")
+try:
+    with open("model_metrics.json") as _vf_:
+        _ver_ = json.load(_vf_).get("version", "v10")
+except Exception:
+    _ver_ = "v10"
+st.sidebar.caption(f"ExoDetect {_ver_} | BAH2026 PS7 | Team OrbitX2026")
 
 st.markdown("---")
 
