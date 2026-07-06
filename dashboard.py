@@ -2534,32 +2534,52 @@ elif page == "📄 Project Report":
         st.markdown("</div>", unsafe_allow_html=True)
 
     with dc2:
-        st.markdown("<div class='report-card'><h3>4. Model Comparison</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='report-card'><h3>4. Model Evolution</h3>", unsafe_allow_html=True)
         st.dataframe(pd.DataFrame({
-            "Model":      ["RandomForest (features)", "1D-CNN (raw curves)"],
-            "5-Fold CV":  ["87.35% ± 1.04%",  "88.65% ± 2.92%"],
-            "Status":     ["✓ Deployed",      "✓ Trained"],
-        }), use_container_width=True)
-        st.caption("RF+GB Ensemble trained on 641 real NASA TESS stars. CNN trained on 493 phase-folded curves.")
+            "Version":  ["v9 (rejected)", "v10 baseline", "v10.1 tuned", "v10.2 cross-mission"],
+            "Accuracy": ["97.6% — data leakage", "76.4%", "78.6%", "82.6%"],
+            "Evidence": ["leaky CV folds", "honest holdout", "honest holdout",
+                         "honest holdout, 751 stars"],
+        }), use_container_width=True, hide_index=True)
+        st.caption("Every v10+ number is a star-level 20% holdout locked away "
+                   "before training or tuning — nothing is measured on stars "
+                   "the model has seen.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    vc1, vc2 = st.columns(2)
-    with vc1:
-        if os.path.exists("model_validation.png"):
-            st.image("model_validation.png", caption="RandomForest — Feature Importance + Confusion Matrix")
-    with vc2:
-        if os.path.exists("cnn_validation.png"):
-            st.image("cnn_validation.png", caption="CNN — 5-Fold CV + Pooled Confusion Matrix")
+    st.markdown("<div class='report-card'><h3>5. Results &amp; Evidence</h3>",
+                unsafe_allow_html=True)
+    _G = "slide_graphs"
+    _graphs = [
+        ("accuracy_journey.png", "The honesty journey — the leaky 97.6% was rejected; "
+         "every number after it is a locked holdout"),
+        ("roc_per_mission.png", "ROC on 751 never-seen stars — TESS-only and "
+         "Kepler-only curves shown separately"),
+        ("confusion_matrix.png", "Confusion matrix on the honest holdout (threshold 0.5)"),
+        ("threshold_tradeoff.png", "One calibrated model, tunable operating point — "
+         "vetting mode reaches ~92% precision"),
+        ("feature_importance.png", "Top physics-informed features (XGBoost)"),
+    ]
+    _avail = [(f, c) for f, c in _graphs if os.path.exists(os.path.join(_G, f))]
+    if _avail:
+        for i in range(0, len(_avail), 2):
+            gcols = st.columns(2)
+            for gc, (fname, cap) in zip(gcols, _avail[i:i+2]):
+                with gc:
+                    st.image(os.path.join(_G, fname), caption=cap,
+                             use_container_width=True)
+    else:
+        st.info("Run `python generate_slide_graphs.py` to generate the evidence graphs.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("""
     <div class='report-card'>
-    <h3>5. Key Improvements in v9.0</h3>
+    <h3>6. Key Improvements in v10.2</h3>
     <ul>
-    <li><b>~2,000-star training dataset</b> — expanded from 641 to 1,971 NASA TOI stars (1,666 after quality cleaning), auto-balanced planet / false-positive classes</li>
-    <li><b>XGBoost classifier with 17 features</b> — 11 physics-informed light-curve features (transit shape, depth consistency, ingress/egress asymmetry, odd-even ratio, …) + 6 TIC stellar parameters (Teff, radius, mass, log g, Tmag, contamination), reaching 97.60% CV accuracy and 0.9987 ROC-AUC</li>
-    <li><b>Stellar-parameter enrichment</b> — live TIC catalog lookup feeds host-star physics into every classification</li>
-    <li><b>Persistent SQLite database</b> — every analysis auto-saved to exodetect.db, browsable in the Database Explorer with interactive 3-D plots, radar fingerprints, parallel coordinates, HR diagram, and animated population charts</li>
-    <li><b>Infinity/NaN guard</b> — feature matrix cleaned before training to prevent float32 overflow crashes</li>
+    <li><b>Cross-mission training</b> — 3,751 quality-filtered NASA stars (1,797 TESS TOI + 1,954 Kepler KOI) with a mission flag so the model absorbs inter-mission systematics; per-mission holdout metrics reported separately</li>
+    <li><b>Honest evaluation culture</b> — the leaky 97.6% was found and rejected; a 20% star-level holdout is locked before any training/tuning, and isotonic calibration makes the displayed probabilities trustworthy</li>
+    <li><b>21 physics-informed features</b> — 11 light-curve + 3 engineered (planet-radius estimate, expected-duration ratio, period) + 6 stellar + mission; candidate features that hurt the holdout were tested and rejected</li>
+    <li><b>Frontier Leaderboard</b> — the model's standing verdicts on genuinely unconfirmed TOI candidates, with a high-confidence tier backed by measured holdout precision</li>
+    <li><b>Single source of truth</b> — feature lists, filters and formulas live in one shared module used by training, evaluation, tuning and the live dashboard</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -2600,6 +2620,6 @@ elif page == "📜 History":
 
 st.markdown("---")
 st.caption(
-    f"ExoDetect v9.0 | BAH2026 PS7 | Jadavpur University | "
+    f"ExoDetect {_ver_} | BAH2026 PS7 | Jadavpur University | "
     f"NASA TESS / MAST | {model_source}"
 )

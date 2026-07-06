@@ -133,6 +133,19 @@ CSV/JSON export), 🗄️ Database Explorer, 🗺️ Sky Map, 🎯 Model Honesty
   catalog-tuned 0.7–1.4× period windows): 78 analyses, 16 frontier verdicts
   in committed exodetect.db.
 
+## Session 2026-07-06 — report graphs + wider frontier survey
+- generate_slide_graphs.py (planet folder): 5 deck-ready PNGs + SLIDE_NUMBERS.txt
+  in slide_graphs/, all computed live from model_metrics.json /
+  holdout_predictions.csv / xgb_raw.pkl — rerun after any retrain.
+- Project Report page: stale v8/v9 sections (RF+GB 87%, CNN table, 97.60%
+  bullet) replaced with a Model Evolution table, the 5 evidence graphs
+  (loaded from slide_graphs/), and v10.2 improvement bullets.
+- Sidebar + footer read version/counts from model_metrics.json — no
+  hardcoded metrics remain anywhere in the UI.
+- Frontier survey widened: 27 verdicts / 89 analyses in committed
+  exodetect.db. Best open candidate 63.4% — none clear the 0.70
+  high-confidence bar yet (honest talking point: no cheap planet calls).
+
 ## Remaining backlog (priority order)
 1. **Finish Kepler** (user's terminal) → retrain → update README metrics → push.
 2. **Seed cloud DB**: run 10–15 best stars locally, commit exodetect.db, push
