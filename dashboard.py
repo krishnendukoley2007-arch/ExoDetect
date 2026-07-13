@@ -27,6 +27,79 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+st.markdown("""
+<style>
+/* === Cosmic starfield background === */
+.stApp {
+    background: radial-gradient(ellipse at 60% 45%, rgba(255,214,150,0.10) 0%, rgba(255,180,120,0.05) 15%, transparent 40%),
+                linear-gradient(135deg, #05060a 0%, #0a0d16 40%, #05060a 100%);
+    background-attachment: fixed;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Milky way diagonal band */
+.stApp::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(120deg,
+        transparent 0%,
+        transparent 30%,
+        rgba(180,140,100,0.06) 42%,
+        rgba(255,210,160,0.09) 50%,
+        rgba(180,140,100,0.06) 58%,
+        transparent 70%,
+        transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Twinkling star layers */
+.stApp::after {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background-image:
+        radial-gradient(1.5px 1.5px at 20px 30px, #fff, transparent),
+        radial-gradient(1px 1px at 90px 120px, #fff, transparent),
+        radial-gradient(2px 2px at 160px 60px, #fff, transparent),
+        radial-gradient(1px 1px at 210px 180px, #eee, transparent),
+        radial-gradient(1.5px 1.5px at 280px 40px, #fff, transparent),
+        radial-gradient(1px 1px at 340px 200px, #fff, transparent),
+        radial-gradient(2px 2px at 400px 100px, #fff, transparent),
+        radial-gradient(1px 1px at 60px 250px, #ddd, transparent),
+        radial-gradient(1.5px 1.5px at 480px 150px, #fff, transparent),
+        radial-gradient(1px 1px at 130px 320px, #fff, transparent);
+    background-repeat: repeat;
+    background-size: 500px 400px;
+    animation: twinkle 4s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.8;
+}
+
+@keyframes twinkle {
+    0%   { opacity: 0.5; }
+    50%  { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+/* Keep Streamlit content above the stars */
+.stApp > header, .main .block-container {
+    position: relative;
+    z-index: 1;
+}
+
+/* Optional: make cards/containers slightly glassy so stars show through */
+div[data-testid="stVerticalBlockBorderWrapper"], div[data-testid="metric-container"] {
+    background: rgba(15, 17, 25, 0.55) !important;
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
 # MATPLOTLIB GLOBAL SETTINGS — sharp, high-DPI plots
