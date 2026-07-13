@@ -55,7 +55,7 @@ git clone https://github.com/krishnendukoley2007-arch/ExoDetect.git
 ### Step 3 — Open a terminal inside the project folder
 
 ```bash
-cd Desktop\ExoDetect-main
+cd ExoDetect
 ```
 (Adjust the path to wherever you unzipped/cloned it. Tip for Windows: you can
 also open the folder in File Explorer, click the address bar, type `cmd`, and
